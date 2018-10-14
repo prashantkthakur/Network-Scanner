@@ -1,0 +1,226 @@
+I. Usage:
+
+    python scandetect.py arguments
+
+    For help : python scandetect.py --help
+
+    Sample:
+        ########
+
+            waffles:~/pkt/p1_557_Prashant_kr_Thakur$ python scandetect.py --help
+        usage: scandetect.py [--help] [-V] [-t TIMEOUT] [-p PNUM] [-h HNUM]
+                             [-S FLWTIMEOUT] [-o OFFSET] [-r FILENAME | -i INAME]
+
+        optional arguments:
+          --help                show this help message and exit
+          -V, --verbosity       Verbosity option DEBUG
+          -t TIMEOUT, --timeout TIMEOUT
+                                App Timeout
+          -p PNUM, --pnum PNUM  Port Number
+          -h HNUM, --hnum HNUM  Host Number
+          -S FLWTIMEOUT, --flwtout FLWTIMEOUT
+                                FlowTimeout(s)
+          -o OFFSET, --offset OFFSET
+                                Offset time
+          -r FILENAME, --filename FILENAME
+                                Filename
+          -i INAME, --interface INAME
+                                Interface Name
+
+    Examples:
+	python scandetect.py -r ../virtual_udp_tcp.pcap -p 5 -t 30 -V	
+	=> Read the given pcap file with application timeout 30sec and verbose display if there is any IP scanning any host for atleast 5 ports.
+
+	python scandetect.py -r ../virtual_udp_tcp.pcap -p 5 -t 30 -o 20 -V
+	=> Read the given pcap file with application timeout 30sec; disregard any packets till 20 second; and verbose display if there is any IP scanning any host for atleast 5 ports.
+
+	python scandetect.py -r ../virtual_udp_tcp.pcap -p 5 -t 30 -o 2 -S 80 -V
+	=> Read the given pcap file with application timeout 30sec; disregard any packets till 20 second; disregard any re-connection traffic from past connection; and verbose display if there is any IP scanning any host for atleast 5 ports.
+
+	python scandetect.py -r ../virtual_udp_tcp.pcap -p 5 -h 3 -t 20
+	=> Read the given pcap file with application timeout 20sec and display summary only if there is any IP scanning any host for atleast 5 ports OR there are any IP scanning atleast 3 hosts at same port.
+
+	python scandetect.py -i eth0 -p 50 -t 30 -V
+	=> Sniff the packet for 30 seconds from an interface name eth0 and verbose display if there are any IP which scans any host for atleast 50 ports
+
+	python scandetect.py -i eth0 -h 10 -p 50 -t 30 -V
+	=> Sniff the packet for 30 seconds from an interface name eth0 and verbose display if there are any IP which scans any host for atleast 50 ports OR any IP that scanns atleast 10 hosts for same port.
+
+
+
+
+/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
+
+II. Arguments:
+
+    The user can pass the required arguments to the function to sort the result based on their requirement. The following are the options that is covered by the program.
+
+    1. -r filename: This option is used to specify the file to be read from the directory. It requires the full path if the file is not in the current directory.
+        E.g. python scandetect.py -r ./scanner.pcap ...
+
+    2.  -i interface name: This option is used to specify the interface name which should be used to sniff the packets from the network. The command must be ran as root as sniffing the traffic requires root privilege.
+        E.g. python scandetect.py -i eth0 ...
+
+    Note: -r and -i option has been designed to be mutually exclusive so both of the arguments can't be passed to a program at the same time.
+
+    3. -o timeoffset: This option is used to skip the packets which were captured till the specified offset time (in seconds). For instance, if the offset is 10 (which means 10 seconds) then those packets which from the beginning to the offset time will not be considered as the flow. So the packets which has the timestamp greater than (initial_pkt_timestamp + offset). DATA TYPE=INTEGER
+
+    Note: -o option is only valid with the filename. If this option is used with -i option then the program throws an exception and stop execting. Message displayed: "Error: Interface Name (-i) and offset time (-o) can't be used together." 
+
+    4. -p number_of_ports: This option is used to filter out all the scanners IP if the number of ports scanned by the scanner (for different hosts or one host) is less than the number specified. For instance: for "4" as this option, the program will try to filter out all the scanner that has number of ports scanned less than 4. So if a scanner "10.10.10.10" scans "192.166.34.23" for 3 ports - it would not be included in the final result. Similarly, if a scanner "11.11.11.11" scans "192.12.13.14" for 2 ports and "193.24.34.22" for 2 ports then the total port scanned is 4, however this result is not included in the result. The basic idea is to check for number of ports scanned on one host. DATA TYPE=INTEGER
+
+    5. -h number_of_hosts: Thiss option is used to filter out the results. For instance: with option set as 3 if the scanner "10.10.10.10" scans at least three hosts on same ports, it will be included in the result but if there is only two host with similar ports then it would be discarded. DATA TYPE=INTEGER
+
+
+    6. -V : This option is a verbose option which would print the output with description of all the ports, protocols, host a scanner visited. If this option is not specified then the generic summary of the traffic is displayed which matches the condition.
+
+    7. -S num_in_second: This option is used to consider the flow. Say there was a communication going on during the -o timeout (which was not considered) and the communication broke and it was re-established after the offset(-o option) then it would be not be considered if the connection establish packet is seen has timestamp < (offset + flow_timeout). So if the packet of re-establish connection was seen at 20 second and the offset was set to 15 and flow timeout to 10 second then 20 < 15+10 so it would be not considered else the packet would be considered as a threat. DATA TYPE=INTEGER
+
+    8. -t timeout: This option is used to track the application timeout. If the application need more time to run than what specified in the timeout, the application will terminate displaying the message "Error executing command. Error: Timeout; Try increasing higher timeout." So you have to increase the timeout and run the program again. This timeout also defines how long will the application capture the live packets. If the timeout is set to 20 then the packets would be captured for next 20 seconds and then the packets would be analyzed. DATA TYPE=FLOAT
+
+|/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\|
+
+III. Program Overflow:
+
+    The program has been added in two files i.e. scandetect.py and Scanner.py (core implementation). Let's discuss the content of the module in detail.
+
+    A. Content of "scandetect.py"
+      -----------------------------
+
+        1) from Scanner import ScanDetect: The main class ScanDetect is imported from the Scanner.py file which is present in the same directory.
+        Note: The mainfest and Scanner.py file should always be present in the same directory where scandetect.py is located. Else the program will not executing without these missing files.
+
+        2) setup_argparser() : This functions parses the arguments that has been passed to it during the command execution and make those parameters available for other functions.
+
+        3) main() : This is the main method that is executed which uses other modules to parse the arguments, create an object for the ScanDetect and execute the program to either read the packets from a file or sniff the network interface.
+
+
+    B. Content of "Scanner.py"
+       ------------------------
+
+       There are two class defined in this file. The first is "Scanner" which keep tracks of source/destination IP, protocols, ports seen in the packets. It also maintains a data variable which stores all the information in the following format.
+       self.data = {'hostIP-1':{"protocol1":set([ports]),"protocol2":set([ports])},"hostIP-2":{"protocol1":set([ports])}}
+       E.g. {
+                '1.1.1.1':{'TCP':set([22,23,24,25,80,443]),'UDP':set([53,54,55,123]),'ICMP':set([None])},
+                '2.2.2.2':  {'TCP':set([8080,21,24,20,443]),'UDP':set([153,123])}
+            }
+
+       To give a brief information on what are stored and how the data are analyzed. I would mention the __init__ function content of ScanDetect class.
+
+        1) def __init__():
+
+            self.filename => Keeps file name passed as an argument
+            self.iname = Interface name
+            self.verbosity = Will the program run in Verbose mode or not based on the argument.
+            self.timeout = Application timeout
+            self.pNum = Number of ports to consider for a vertical scanner
+            self.hNum = Number of hosts to consider for a horizontal scanner
+            self.flw_timeout = The timeout consideration for flow after offset.
+            self.offset = Time offset to read a pcap file.
+            self.summary_data = A dictionary that tracks of all host and ports used later to summarize the output.
+            self.all_scanners = A dictionary that contains all information from packets about the scanner, host, protocol, ports and keep it in the following format.
+
+            {'scanner_ip-2': scanner-1-Scanner-object, 'scanner_ip-2': scanner-2-Scanner-object....}
+
+         2) read_pcap():
+
+            Arguemts: takes start time of the application to track the application timeout. If the current time (time.time()- start) is less than timeout then the application reads the file and pass it for packet analysis. The packet analysis also keeps track of the timeout and terminates raising "Timeout" when the time spent by the application is more than timeout specified in the argument.
+
+            This function opens the file specified as an argument create a dpkt Reader and pass that to the packet analyzer module. This function also receives a start time when the application actually started to track the application timeout (-t). The application processes the packet and if the timeout is not enough then it breaks out of the loop. If there is available time to run the application, it calls the packet_analyzer function to do the packet analysis.
+
+            If there is any error the the exception is displayed and the program is exited.
+
+        3) live_sniff():
+
+            Arguments: It takes start as an argument from the scandetect main function to keep track of the time to capture the packets. So if the timeout is 50 sec then the live sniffing would only try to capture packets within 50 seconds.
+
+            This generates a pcap file called "pkt.pcap" to store the packets captured. Later this file is read and passed to the packet_analyzer function for the packet analysis.
+
+            NOTE: When the packets from the live capture were stored in the list and passed for the analysis then the results were inconsistent with one reading the file. So later reading the sniffed packets from the file was implemented because of limited time for DEBUG. Also the pcap file is not removed by the program explicitly.
+
+        4) pkt_analyzer():
+            Arguments: dpkt pcap Reader object and start time of the application. NOTE: the start is by default set to infinity. So if a start time is provided then the application would terminate based on the application timeout ( IMPLEMENTED WHILE READING THE FILE). HOWEVER, if the mode is live sniffing then the timeout is considered only for capturing the packet but the analysis is done with an additional time. So no time is tracked after capturing the packets in live mode.
+
+        > A pkt_count is maintained which keeps track of the number of packets seen and the nature of the packets like "TCP/UDP/ICMP" non-IP packets etc.
+
+        > If  (current time - start time ) < Application timeout then the program exists.
+
+        > Filter out all non-IP packets so ARP packets will not be evaluated though they would be counted as first packet to consider the offset.
+
+        > The time of the first packet is stored and then if there is -o option, the packets are not considered till the offset. During this an offset_flow is maintained which keep track of a flow constructed as 'srcIP-dstIP-protocol-dstPort'. Now when there was some connection which broke between the offset and immediately after the offset time, the connection is tried to be re-established then -S option value is used to keep track of any re-connection attempt which was seen in offset time are not considered as the valid communication. If there is no such communication in the past then those connection attempt are considered valid and added to the all_scanner dictionary.
+
+        > If the valid packet is ICMP then only request packets are considered for the analysis as REPLY packets are considered as the message from the victim so they are not considered.
+
+        > For TCP/UDP connection if the packet for TCP has SYN+ACK and RST+ACK flag set then they are discarded as they are the reply message from the victim. REASON: The reason to discard this is to prevent the situation where the victim would be considered as scanner and added as the scanner list.
+
+        > The other logic for the detection of the scanner is if the source IP of a packet is seen as the destination IP (host IP) of previous packet and the destination port matches the source port of previous packet then they are considered as the reply packet with/without payload. So no consideration is done for the packet whose source IP matches the list of host IP previously stored  and also  source port of new packet matches the list of ports for the given scanner-host-protocol port list. If the packet is new the given Scanner object is updated to include the host IP, protocol and port.
+        For instance:
+            Current state scanner ={"1.1.1.1":{"2.2.2.2":{"TCP":set([23,56])}}
+            New packet: sIP="2.2.2.2", dIP="1.1.1.1", sPort="23", dPort="4567", protocol="TCP
+            This new packet will not be considered as a valid entry for the scanner as  sIP is host of scanner and dIP is scanner IP and protocol is TCP and sPort 23 also present tin the scanner dictionary.
+
+        > After evaluating all the packets, we have a list of scanners and the data with all the scanner mentioned above.
+
+        > Once the analysis is finished, verbose_print function is called which handles the printing output.
+
+    5) verbose_print():
+        Arguments: No explicit arguments
+
+	Sample printed output:
+
+		waffles:~/pkt/p1_557_Prashant_kr_Thakur$ python scandetect.py -r ../virtual_udp_tcp.pcap -p 20 -V
+
+		Scanner		  Protocol	  HostScanned		  ProtScanned
+		---------------	-------------	----------------	----------------
+		192.168.124.73	     UDP	  192.168.124.1		50-80, 97
+		192.168.124.73	     TCP	  192.168.124.1		20-40, 55, 58, 5355
+
+
+		Summary:
+
+		Scanner		  #HostsScanned		  #PortsScanned
+		------------	-----------------	------------------
+		192.168.124.73		1			56
+
+
+        > This method calls the function '__check_horizontal_scanner' which keeps track of all the hosts which has scanned same protocol and port. To consider this 'PROTOCOL-PORT' is considered as a unit for common check. So if there is two host who tries to connect to "TCP-8080" then they are marked as a candidate of horizontal scan. If the value of such combination is greater than hNum specified in the parameter then the satisfying results are added to the output print.
+
+        > It also iterate through all the scanner present and tries to check the number of ports that are polled by one host and if the number of the port is greater than pNum then those are considered as vertical scanner.
+
+        > Finally a result content is created to track the scanners. If the verbose option is provided then the data built for the verbose mode is displayed else it is skipped and only summary of the result is printed as an output.
+
+        > This function than calls the summary_print function which prints the number of hosts and total number of ports used by an scanner. So if the scanner '1.1.1.1' scans '2.2.2.2', '3.3.3.3','4.4.4.4' for ports [12,22,33,44], [44,22,66],[88,99,70,60] then the summary_print would display as the following:
+
+        Scanner        #HostsScanned    #PortsScanned
+       -------------  ---------------  ---------------
+        1.1.1.1              3                11
+
+    6) There are other supporting functions implemented based on the necessity of the above functions like format_ip would unpack the value into decimal format. _add_element would try to create a port in range format. Few other functions would update the given dictionary to record the new connection.
+
+|/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\|
+
+IV. Known Issue and Bugs
+
+    The code was checked on lab machine and my local machine with different kind of pcap files and live sniffing. The following are the known issue during the development and analysis of the data.
+
+    1) The live sniffing gives less number of data so it is written into a file "pkt.pcap" explicitly for the timeout mentioned (if no timeout is mentioned then the program assumes 200 seconds as default). The written file is then read and the data is analyzed.
+    2) The IP packets are only considered so TCP/UDP/ICMP are only considered and the host discovery with ARP will not be detected by the program.
+    3) -S flow option has been implemented and it seems to make some data changes which is promising to discard any past re-connection establishment. However, this has not been debugged in detail so there could be some cases where this may not be accurate.
+    4) If the initial packet encountered after the offset and flow timeout is SYN+ACK and RST+ACK then it is disregarded as those packets are the response which is seen when the victim replys if the port is open or close respectively. The problem faced (if not discarded) was the false information was added to the database and the authentic packet are mis-interpreted as returning reply and discarded.
+    5) Only ICMP Reply packets are considered and the Response packet are dropped as they would create opposite false entry.
+
+    6) The program may not be able to parse the pcap file if the format is not as per the standard. If the pcap is incomplete (cut while being written) or the header are not Physical-Ethernet-IP-TCP/UDP/ICMP then the program wouldn't be able to parse those data.
+
+|/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\|
+
+V. References:
+
+        The library (pypcap and dpkt) documentation and code were followed. The code or idea/deployment of the program was not followed from others.
+
+
+
+
+
+
+
+
